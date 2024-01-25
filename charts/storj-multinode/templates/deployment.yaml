@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "storj-multinode.fullname" . }}
+  labels:
+    {{- include "storj-multinode.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "storj-multinode.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "storj-multinode.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "storj-multinode.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.multinode }}
+          securityContext:
+            {{- toYaml .securityContext | nindent 12 }}
+          image: "{{ .image.repository }}"
+          imagePullPolicy: {{ .image.pullPolicy }}
+          {{- end }}
+          ports:
+            - name: dashboard
+              containerPort: 15002
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: dashboard
+          readinessProbe:
+            tcpSocket:
+              port: dashboard
+          volumeMounts:
+            - name: {{ include "storj-multinode.fullname" . }}
+              mountPath: /app/config
+            - name: storj-identity
+              mountPath: /app/identity
+      volumes:
+        - name: storj-identity
+          secret:
+            secretName: {{ required "External secret identity" .Values.identity.externalSecret.secretName }}
+        {{- if .Values.persistence.enabled }}
+        - name: {{ include "storj-multinode.fullname" . }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.persistentVolumeClaim.existingClaim }}
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
